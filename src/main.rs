@@ -22,7 +22,7 @@ fn main() {
 }
 
 // ┌─────────────────────────────────────────────────────────┐
-//  frexp from C
+//  frexp & ldexp from C
 // └─────────────────────────────────────────────────────────┘
 extern "C" {
     fn frexp(x: c_double, exp: *mut c_int) -> c_double;
@@ -111,7 +111,7 @@ fn ldexp_(x: f64, exp: i32) -> f64 {
     let new_exponent = exponent + exp;
 
     // Check if the new exponent is within the valid range for IEEE 754 format
-    if new_exponent < 0 || new_exponent > 0x7ff {
+    if !(0..=0x7ff).contains(&new_exponent) {
         // If the exponent is out of range, return infinity or zero depending on the input sign
         return if (bits >> 63) != 0 {
             f64::NEG_INFINITY
