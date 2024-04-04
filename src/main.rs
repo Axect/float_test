@@ -10,6 +10,15 @@ fn main() {
         let (m2, e2) = frexp_(x);
         m1 == m2 && e1 == e2
     }).print();
+
+    let n = Uniform(0i32, 10i32);
+    let i_vec = n.sample(1000);
+
+    x_vec.iter().zip(i_vec.iter()).all(|(&x, &i)| {
+        let m1 = x.ldexp(i as i32);
+        let m2 = ldexp_(x, i as i32);
+        m1 == m2
+    }).print();
 }
 
 // ┌─────────────────────────────────────────────────────────┐
@@ -18,10 +27,13 @@ fn main() {
 extern "C" {
     fn frexp(x: c_double, exp: *mut c_int) -> c_double;
     fn frexpf(x: c_float, exp: *mut c_int) -> c_float;
+    fn ldexp(x: c_double, exp: c_int) -> c_double;
+    fn ldexpf(x: c_float, exp: c_int) -> c_float;
 }
 
 pub trait FloatExp: Sized {
     fn frexp(self) -> (Self, i32);
+    fn ldexp(self, exp: i32) -> Self;
 }
 
 impl FloatExp for f64 {
@@ -30,6 +42,10 @@ impl FloatExp for f64 {
         let res = unsafe { frexp(self, &mut exp) };
         (res, exp)
     }
+
+    fn ldexp(self, exp: i32) -> Self {
+        unsafe { ldexp(self, exp) }
+    }
 }
 
 impl FloatExp for f32 {
@@ -37,6 +53,10 @@ impl FloatExp for f32 {
         let mut exp: c_int = 0;
         let res = unsafe { frexpf(self, &mut exp) };
         (res, exp)
+    }
+
+    fn ldexp(self, exp: i32) -> Self {
+        unsafe { ldexpf(self, exp) }
     }
 }
 
@@ -69,4 +89,38 @@ fn frexp_(x: f64) -> (f64, i32) {
 
     // Return the normalized mantissa and the exponent incremented by 1
     (mantissa, exponent + 1)
+}
+
+// ┌─────────────────────────────────────────────────────────┐
+//  Pure Rust ldexp
+// └─────────────────────────────────────────────────────────┘
+fn ldexp_(x: f64, exp: i32) -> f64 {
+    // If the input is zero or the exponent is zero, return the input unchanged
+    if x == 0.0 || exp == 0 {
+        return x;
+    }
+
+    // Convert the input to its IEEE 754 binary representation
+    let bits = x.to_bits();
+
+    // Extract the exponent from the binary representation
+    // Bits 52 to 62 represent the exponent in IEEE 754 format
+    let exponent = ((bits >> 52) & 0x7ff) as i32;
+
+    // Calculate the new exponent by adding the input exponent to the existing exponent
+    let new_exponent = exponent + exp;
+
+    // Check if the new exponent is within the valid range for IEEE 754 format
+    if new_exponent < 0 || new_exponent > 0x7ff {
+        // If the exponent is out of range, return infinity or zero depending on the input sign
+        return if (bits >> 63) != 0 {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+    }
+
+    // Combine the new exponent with the mantissa and sign bits to create the result
+    let result_bits = (bits & 0x800fffffffffffff) | ((new_exponent as u64) << 52);
+    f64::from_bits(result_bits)
 }
